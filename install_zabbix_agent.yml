@@ -1,0 +1,67 @@
+---
+- name: Set up SSH tunnel and install Zabbix agent
+  hosts: client
+  become: yes
+  vars:
+    ssh_user: danial
+    ssh_host: client
+    local_port: 9999
+    remote_port: 3128
+    zabbix_deb_file: zabbix-release_6.4-1+ubuntu22.04_all.deb
+
+  tasks:
+    - name: Set up SSH reverse tunnel (without netcat)
+      shell: |
+        ssh -f -N -T -R {{ local_port }}:localhost:{{ remote_port }} {{ ssh_user }}@{{ ssh_host }}
+      async: 300
+      poll: 0
+
+    - name: Configure APT proxy
+      copy:
+        dest: /etc/apt/apt.conf.d/proxy.conf
+        content: |
+          Acquire::http::Proxy "http://127.0.0.1:{{ local_port }}";
+          Acquire::https::Proxy "http://127.0.0.1:{{ local_port }}";
+
+    - name: Copy Zabbix release package
+      copy:
+        src: "{{ zabbix_deb_file }}"
+        dest: "/tmp/{{ zabbix_deb_file }}"
+        mode: '0644'
+
+
+    - name: Install Zabbix release package
+      apt:
+        deb: "/tmp/{{ zabbix_deb_file }}"
+        state: present
+
+    #- name: Update APT cache
+    #  apt:
+    #    update_cache: yes
+
+
+    - name: Update APT cache
+      apt:
+        update_cache: yes
+      register: apt_update_result
+      ignore_errors: yes
+
+    - name: Print APT update result
+      debug:
+        var: apt_update_result
+
+    - name: Install Zabbix agent
+      apt:
+        name: zabbix-agent
+        state: present
+
+    - name: Ensure Zabbix agent is started and enabled
+      systemd:
+        name: zabbix-agent
+        state: started
+        enabled: yes
+
+    - name: Clean up - remove Zabbix release package
+      file:
+        path: "/tmp/{{ zabbix_deb_file }}"
+        state: absent
