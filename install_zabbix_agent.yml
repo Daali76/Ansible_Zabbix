@@ -3,7 +3,7 @@
   hosts: client
   become: yes
   vars:
-    ssh_user: danial
+    ssh_user: user
     ssh_host: client
     local_port: 9999
     remote_port: 3128
